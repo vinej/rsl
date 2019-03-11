@@ -1,0 +1,17 @@
+field aa
+scalar 1 integer
+function = 2
+field j integer
+scalar 1 integer
+function = 2
+field aa integer
+scalar 1 integer
+scalar 1000000 integer
+command for 3
+field j integer
+field aa integer
+function = 2
+command next 0
+field j integer
+command print 1
+scalar 'end' string
