@@ -1,0 +1,6 @@
+[package]
+name = "rust101"
+version = "0.1.0"
+authors = ["jyv <jyvinet@hotmail.ca>"]
+
+[dependencies]
