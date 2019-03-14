@@ -62,20 +62,12 @@ fn main() {
     };
 
     let f = TokenType::Function { id_name : 1,  parameter : 2,  ptr : add  };
-    let t = Token {
-        line : 0,
-        id_token : 0,
-        token: f
-    };
+    let t = Token { line : 0,  id_token : 0,   token: f  };
 
     p.code.push(t);
 
     let f2 = TokenType::Value { value : ValueType::Real{ value: 12.12 } };
-    let t2 = Token {
-        line : 0,
-        id_token : 0,
-        token: f2
-    };
+    let t2 = Token { line : 0,  id_token : 0,  token: f2  };
 
     p.code.push(t2);
 
