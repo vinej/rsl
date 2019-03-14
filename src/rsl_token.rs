@@ -1,6 +1,6 @@
 mod rsl_token {
-	pub type FunctionPtr = fn(stack : &mut Vec<Field>) -> i32;
-	pub type CommandPtr = fn(stack : &mut Vec<Field>) -> u32;
+	pub type FunctionPtr = fn() -> i32;
+	pub type CommandPtr = fn() -> u32;
 
 	// set, get
 	pub enum ValueType {
@@ -22,7 +22,7 @@ mod rsl_token {
 	}
 
 	pub struct Field {
-		id_name : u16,		     // Id of the field name, debugging purpose
+		id_name : i16,		     // Id of the field name, debugging purpose
 		value: ValueType 
 	}
 
@@ -52,5 +52,13 @@ mod rsl_token {
 		id_token : u16,       // the token number into the program 
 		token : TokenType     // the token content 
 	}
+
+	struct Program {
+		code : Vec<Token>,
+		index : u16,
+		next_token : Token,
+		stack : Vec<Scalar>,
+	}
+
 }
 

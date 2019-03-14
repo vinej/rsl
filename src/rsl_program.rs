@@ -1,13 +1,9 @@
 
-mod rsl_program {
-	use rsl_token::{Token, Scalar };
+mod rsl_program;
 
-	struct Program {
-		code : Vec<Token>,
-		index : u16,
-		next_token : Token,
-		stack : Vec<Scalar>,
-	}
+mod rsl_program {
+	use rsl_token::{Program, Token, Scalar };
+
 
 
 	impl Program {

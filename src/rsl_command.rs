@@ -1,4 +1,6 @@
 
+mod rsl_command;
+
 mod rsl_command {
 
 	pub enum EnumCommand {
@@ -14,7 +16,7 @@ mod rsl_command {
 		Enddef,
 	}
 
-	fn for(context: &Program, stack : &mut Vec<Value>) -> u32 {
+	fn for(context: &Program, stack : &mut Vec<Value>) -> Resultu32 {
 
 	}
 
@@ -62,7 +64,7 @@ mod rsl_command {
 	}
 
 	impl Command {
-		pub fn exe(&self, context: &Program, stack: Vec<Value>) {
+		pub fn exe(&self, context: &Program, stack: &mut Vec<Value>) {
 			match self.id_command {
 				EnumCommand::For => for(context, stack),
 				EnumCommand::Break => break(context, stack),
