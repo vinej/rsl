@@ -1,11 +1,13 @@
-type FunctionPtr = fn();
-type CommandPtr = fn();
+use std::time::{Instant};
 
-// set, get
+type FunctionPtr = fn(u16, &mut Vec<ValueType>);
+type CommandPtr = fn(u16, &mut Vec<ValueType>);
+
+#[derive(Copy, Clone)]
 enum ValueType {
-    Boolean{ value: bool},
-    Integer{ value : i64},
-    Real{ value : f64}
+    Boolean(bool),
+    Integer(i64),
+    Real(f64)
 }
 
 enum TokenType {
@@ -22,8 +24,15 @@ struct Token {
     token : TokenType     // the token content 
 }
 
-fn add() {
-    println!("hello");
+fn add(n: u16, stack: &mut Vec<ValueType>) {
+    let p1 = stack.pop();
+    let p2 = stack.pop();
+    let total = match (p1,p2) {
+        (Some(ValueType::Real(v1)), Some(ValueType::Real(v2))) => v1 + v2,
+        _ => 0.0
+    };
+    //println!("{}",total);
+    stack.push( ValueType::Real(total));
 }
 
 struct Program {
@@ -33,25 +42,21 @@ struct Program {
 }
 
 impl Program {
-    fn exe(&self, prg: &Program) {
-        for t in &prg.code {
-            match t.token {
-                TokenType::Function{ id_name, parameter, ptr } => (ptr)(),
-                TokenType::Command{ id_name, parameter, ptr, jump } => (ptr)(),
-                TokenType::Constant{ id_name, ref value } => self.print(value),
-                TokenType::Field{ id_name, ref value } => self.print(value),
-                TokenType::Value{ ref value } => self.print(value)
-            };
+    fn exe(&mut self) {
+        let now = Instant::now();
+        for x in 1..1000000 {
+            for t in &self.code {
+                match t.token {
+                    TokenType::Function{ id_name, parameter, ptr } => (ptr)(parameter, &mut self.stack),
+                    TokenType::Command{ id_name, parameter, ptr, jump } => (ptr)(parameter, &mut self.stack),
+                    TokenType::Constant{ id_name, value } => self.stack.push(value),
+                    TokenType::Field{ id_name, value } => self.stack.push(value),
+                    TokenType::Value{ value } => self.stack.push(value)
+                };
+            }
         }
-    }
-
-    fn print(&self, v : &ValueType) {
-        match v {
-            &ValueType::Boolean{ value }  => println!("{}",value),
-            &ValueType::Integer{ value }  => println!("{}",value),
-            &ValueType::Real{ value }  => println!("{}",value),
-        };
-    }
+        self.stack.clear();
+        println!("Elapsed: {} ms", (now.elapsed().as_secs() * 1_000) + (now.elapsed().subsec_nanos() / 1_000_000) as u64)    }
 }
 
 fn main() {
@@ -61,15 +66,16 @@ fn main() {
         stack : Vec::with_capacity(200)
     };
 
-    let f = TokenType::Function { id_name : 1,  parameter : 2,  ptr : add  };
-    let t = Token { line : 0,  id_token : 0,   token: f  };
-
-    p.code.push(t);
-
-    let f2 = TokenType::Value { value : ValueType::Real{ value: 12.12 } };
-    let t2 = Token { line : 0,  id_token : 0,  token: f2  };
-
+    let mut f2 = TokenType::Value { value : ValueType::Real(12.12) };
+    let mut t2 = Token { line : 0,  id_token : 0,  token: f2  };
     p.code.push(t2);
 
-    p.exe(&p);
+    f2 = TokenType::Value { value : ValueType::Real(12.12) };
+    t2 = Token { line : 0,  id_token : 0,  token: f2  };
+    p.code.push(t2);
+
+    f2 = TokenType::Function { id_name : 1,  parameter : 2,  ptr : add  };
+    t2 = Token { line : 0,  id_token : 0,   token: f2  };
+    p.code.push(t2);
+    p.exe();
 }
