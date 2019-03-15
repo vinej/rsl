@@ -1,4 +1,5 @@
 use std::time::{Instant};
+use std::collections::HashMap;
 
 type FunctionPtr = fn(u16, &mut Vec<ValueType>);
 type CommandPtr = fn(u16, &mut Vec<ValueType>);
@@ -11,17 +12,10 @@ enum ValueType {
 }
 
 enum TokenType {
-    Command {  id_name : i16,  parameter : u16, ptr : CommandPtr, jump : u32 },
-    Function{  id_name : i16, parameter : u16 ,  ptr : FunctionPtr},
-    Constant { id_name : i16,  value: ValueType },
-    Field {    id_name : i16,  value: ValueType },
-    Value { value: ValueType }
-}
-
-struct Token {
-    line : u16,           // line into the source code where to token is for debugging purpose
-    id_token : u16,       // the token number into the program 
-    token : TokenType     // the token content 
+    Command(u16, CommandPtr, u32),
+    Function(u16 , FunctionPtr),
+    Field( i16, ValueType ),
+    Value(ValueType)
 }
 
 fn add(n: u16, stack: &mut Vec<ValueType>) {
@@ -36,22 +30,21 @@ fn add(n: u16, stack: &mut Vec<ValueType>) {
 }
 
 struct Program {
-    code : Vec<Token>,
-    index : usize,
+    code : Vec<TokenType>,
     stack : Vec<ValueType>,
+    fields : HashMap<u16,ValueType>
 }
 
 impl Program {
     fn exe(&mut self) {
         let now = Instant::now();
-        for x in 1..1000000 {
+        for x in 1..10 {
             for t in &self.code {
-                match t.token {
-                    TokenType::Function{ id_name, parameter, ptr } => (ptr)(parameter, &mut self.stack),
-                    TokenType::Command{ id_name, parameter, ptr, jump } => (ptr)(parameter, &mut self.stack),
-                    TokenType::Constant{ id_name, value } => self.stack.push(value),
-                    TokenType::Field{ id_name, value } => self.stack.push(value),
-                    TokenType::Value{ value } => self.stack.push(value)
+                match t {
+                    TokenType::Function(n, ptr) => (ptr)(*n, &mut self.stack),
+                    TokenType::Command(n, ptr, jump) => (ptr)(*n, &mut self.stack),
+                    TokenType::Field(id_name, value) => self.stack.push(*value),
+                    TokenType::Value(value) => self.stack.push(*value)
                 };
             }
         }
@@ -62,20 +55,12 @@ impl Program {
 fn main() {
     let mut p = Program {
         code : Vec::with_capacity(200),
-        index : 0,
-        stack : Vec::with_capacity(200)
+        stack : Vec::with_capacity(200),
+        fields : HashMap::new()
     };
 
-    let mut f2 = TokenType::Value { value : ValueType::Real(12.12) };
-    let mut t2 = Token { line : 0,  id_token : 0,  token: f2  };
-    p.code.push(t2);
-
-    f2 = TokenType::Value { value : ValueType::Real(12.12) };
-    t2 = Token { line : 0,  id_token : 0,  token: f2  };
-    p.code.push(t2);
-
-    f2 = TokenType::Function { id_name : 1,  parameter : 2,  ptr : add  };
-    t2 = Token { line : 0,  id_token : 0,   token: f2  };
-    p.code.push(t2);
+    p.code.push(TokenType::Value(ValueType::Real(12.12)));
+    p.code.push(TokenType::Value(ValueType::Real(12.12)));
+    p.code.push(TokenType::Function(2, add));
     p.exe();
 }
