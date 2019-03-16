@@ -8,14 +8,14 @@ type CommandPtr = fn(u16, &mut Vec<ValueType>);
 enum ValueType {
     Boolean(bool),
     Integer(i64),
-    Real(f64)
+    Real(f64),
+    Index(i64)
 }
 
 enum TokenType {
     Command(u16, CommandPtr, u32),
     Function(u16 , FunctionPtr),
-    Field( i16, ValueType ),
-    Field( i16, ValueType ),
+    Field( i16, ValueType, bool ),
     Value(ValueType)
 }
 
@@ -30,16 +30,52 @@ fn add(n: u16, stack: &mut Vec<ValueType>) {
     stack.push( ValueType::Real(total));
 }
 
-fn for(n: u16, stack: &mut Vec<ValueType>) {
+fn fornext(n: u16, 
+        stack: &mut Vec<ValueType>, 
+        fields: &mut HashMap<i64, ( u32, ValueType, bool )>,
+        jump: u32) -> u32 {
+    let f = stack.pop();
+    let min = stack.pop();
+    let max = stack.pop();
+    let inc = stack.pop();
+    let jump = match f {
+        Some(ValueType::Index(ref idx)) => {
+            match fields.get(idx) {
+                Some((idx, value, false)) => {
+                    let min_value = match value { &ValueType::Integer(v) => v, _ => 0 };
+                    fields.insert(*idx, (*idx, ValueType::Index(min_value), true));
+                    0 },
 
-}
+                Some((idx, value, true)) => {
+                    let f_value = match value { 
+                        &ValueType::Integer(v) => v,
+                        _ => 0
+                    };
 
-fn set
+                    match (max,inc) {   
+                        (Some(ValueType::Integer(max_value)), Some(ValueType::Integer(inc_value))) => {
+                            if f_value >= max_value {
+                                fields.insert(*idx, (*idx, 0, false));
+                                jump                        
+                            } else {
+                                let total = f_value + inc_value;
+                                fields.insert(*idx, (*idx, ValueType::Integer(total), true));
+                                0
+                            }},
+                        _ => 0
+                    }
+                },
+                _ => 0
+            } 
+        }
+    };
+    0
+}   
 
 struct Program {
     code : Vec<TokenType>,
     stack : Vec<ValueType>,
-    fields : HashMap<u16,ValueType>
+    fields : HashMap<u16,( u32, ValueType, bool )>
 }
 
 impl Program {
@@ -50,7 +86,7 @@ impl Program {
                 match t {
                     &TokenType::Function(n, ptr) => (ptr)(n, &mut self.stack),
                     &TokenType::Command(n, ptr, jump) => (ptr)(n, &mut self.stack),
-                    &TokenType::Field(id_name, value) => self.stack.push(value),
+                    &TokenType::Field(id_name, value, false) => self.stack.push(value),
                     &TokenType::Value(value) => self.stack.push(value)
                 };
             }
