@@ -38,9 +38,9 @@ fn ge(n_args: u16, stack: &mut Vec<ValueType>) {
     let p2 = stack.pop();
 
     let total = match (p1,p2) {
+        (Some(ValueType::Integer(v1)), Some(ValueType::Integer(v2))) => v2 as f64 >= v1 as f64,
         (Some(ValueType::Real(v1)), Some(ValueType::Real(v2))) => v2 >= v1,
         (Some(ValueType::Integer(v1)), Some(ValueType::Real(v2))) => v2 >=  v1 as f64,
-        (Some(ValueType::Integer(v1)), Some(ValueType::Integer(v2))) => v2 as f64 >= v1 as f64,
         (Some(ValueType::Real(v1)), Some(ValueType::Integer(v2))) => v2 as f64 >= v1,
         _ => true
     };
@@ -74,7 +74,7 @@ fn get(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: 
     }
     let value = fields.get(&idx).unwrap();
     stack.push(*value);
-    //println!("{}",value);
+    //println!("get");
     0
 }
 
@@ -83,8 +83,30 @@ fn set(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: 
     let f = stack.pop().unwrap();
     let idx = match f { ValueType::Field(idx) => idx, _ => 0 };
     fields.insert(idx, v );
-    //println!("{}",v);
+    //println!("set");
     0
+}
+
+fn cfor(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
+    let inc = match stack.pop().unwrap() { ValueType::Integer(v) => v, _ => 0 };
+    let max = match stack.pop().unwrap() { ValueType::Integer(v) => v, _ => 0 };
+    let min = match stack.pop().unwrap() { ValueType::Integer(v) => v, _ => 0 };
+    let f = stack.pop().unwrap();
+    let idx = match f { ValueType::Field(v) => v, _ => 0 };
+    let mut fv = match fields.get(&idx).unwrap() { &ValueType::Integer(v) => v , _ => 0i64 };
+    
+    if fv == -1 {
+        fields.insert(idx,ValueType::Integer(min));
+        0
+    } else {
+        if fv >= max {
+            jump
+        } else {
+            fv = fv + inc;
+            fields.insert(idx,ValueType::Integer(fv));
+            0
+        }
+    }
 }
 
 fn jump(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
@@ -106,6 +128,7 @@ fn next(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs:
 
 fn push(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, value: ValueType) {
     //println!("{}",value);
+    //println!("push");
     stack.push(value);
 }   
 
@@ -113,21 +136,27 @@ impl Program {
     pub fn exe(&mut self) {
         let now = Instant::now();
         let mut i = 0usize;
-        while i < self.code.len() {
-            let t = &self.code[i];
-            let next_i = i + 1;
-            let mut jump_i = next_i;
-            {
+        let len = self.code.len();
+        let mut jump_i = 0;
+        loop {
+            let mut exiit_loop = true;
+            for t in &self.code[i..len] {
                 match t {
                     &TokenType::Function(n_agrs, ptr) => (ptr)(n_agrs, &mut self.stack),
                     &TokenType::Command(n_agrs, ptr, jump) => { jump_i = (ptr)(&mut self.fields, &mut self.stack, n_agrs, jump); }
                     &TokenType::Value(value) => push(&mut self.fields, &mut self.stack, value)
                 }
+                if jump_i != 0 {
+                    //println!("jump {}",jump_i);
+                    i = jump_i;
+                    jump_i = 0;
+                    exiit_loop = false;
+                    break;
+                }
             }
-            if jump_i != 0 {
-                i = jump_i;
-            } else {
-                i = next_i;
+            if exiit_loop == true {
+                println!("exit");
+                break;
             }
         }
         println!("Elapsed: {} ms", (now.elapsed().subsec_nanos() as f64 / 1000000.0) as f64);    
@@ -151,67 +180,52 @@ fn main() {
     // 2
     p.code.push(TokenType::Command(2, set, 0)); 
 
+    // 3
+    p.code.push(TokenType::Value(ValueType::Field(2)));   //  1 == j            
+    // 4
+    p.code.push(TokenType::Value(ValueType::Integer(-1)));
+    // 5
+    p.code.push(TokenType::Command(2, set, 0)); 
+
     // for(i,1,100000,1)
     // i = 1
-    // 3
-    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
-    // 4
-    p.code.push(TokenType::Value(ValueType::Integer(1)));    
-    // 5
-    p.code.push(TokenType::Command(2, set, 0));             
-
-    // if i >= 1000000 jump after next
     // 6
     p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
     // 7
-    p.code.push(TokenType::Command(1, get, 0));             
+    p.code.push(TokenType::Value(ValueType::Integer(1)));    
     // 8
-    p.code.push(TokenType::Value(ValueType::Integer(1000000)));
+    p.code.push(TokenType::Value(ValueType::Integer(1000000)));    
     // 9
-    p.code.push(TokenType::Function(2, ge));               
+    p.code.push(TokenType::Value(ValueType::Integer(1)));    
     // 10
-    p.code.push(TokenType::Command(1, jump, 25));              
+    p.code.push(TokenType::Command(4, cfor, 19));             
 
-    // i = i + 1
+    // j = j + i
     // 11
-    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
     // 12
-    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
     // 13
     p.code.push(TokenType::Command(1, get, 0));               
     // 14
-    p.code.push(TokenType::Value(ValueType::Integer(1)));     
-    // 15
-    p.code.push(TokenType::Function(2, add));                 
-    // 16
-    p.code.push(TokenType::Command(2, set, 0));               
-
-    // j = j + i
-    // 17
-    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
-    // 18
-    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
-    // 19
-    p.code.push(TokenType::Command(1, get, 0));               
-    // 20
     p.code.push(TokenType::Value(ValueType::Field(2)));  //  2 == i         
-    // 21
+    // 15
     p.code.push(TokenType::Command(1, get, 0));               
-    // 22
+    // 16
     p.code.push(TokenType::Function(2, add));              
-    // 23
+    // 17
     p.code.push(TokenType::Command(1, set, 0));             
 
     // next
-    // 24
+    // 18
     p.code.push(TokenType::Command(0, next, 6));           
 
     // print(j)
-    // 25
+    // 19
     p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j     
-    // 26
+    // 20
     p.code.push(TokenType::Command(1, get, 0));             
-    // 27
+    // 21
     p.code.push(TokenType::Function(1, print));            
 
     p.exe();
