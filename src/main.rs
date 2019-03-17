@@ -1,96 +1,134 @@
 use std::time::{Instant};
 use std::collections::HashMap;
 
-type FunctionPtr = fn(u16, &mut Vec<ValueType>);
-type CommandPtr = fn(u16, &mut Vec<ValueType>);
-
 #[derive(Copy, Clone)]
 enum ValueType {
     Boolean(bool),
     Integer(i64),
     Real(f64),
-    Index(i64)
+    Field(i32),
 }
+
+type FunctionPtr = fn(u16, &mut Vec<ValueType>);
+type CommandPtr = fn(&mut HashMap<i32,ValueType>, &mut Vec<ValueType>, u16, usize) -> usize;
 
 enum TokenType {
-    Command(u16, CommandPtr, u32),
+    Command(u16, CommandPtr, usize),
     Function(u16 , FunctionPtr),
-    Field( i16, ValueType, bool ),
-    Value(ValueType)
+    Value(ValueType),
 }
 
-fn add(n: u16, stack: &mut Vec<ValueType>) {
+fn add(n_args: u16, stack: &mut Vec<ValueType>) {
     let p1 = stack.pop();
     let p2 = stack.pop();
+
     let total = match (p1,p2) {
         (Some(ValueType::Real(v1)), Some(ValueType::Real(v2))) => v1 + v2,
+        (Some(ValueType::Integer(v1)), Some(ValueType::Real(v2))) => v1 as f64 + v2,
+        (Some(ValueType::Integer(v1)), Some(ValueType::Integer(v2))) => v1 as f64 + v2 as f64,
+        (Some(ValueType::Real(v1)), Some(ValueType::Integer(v2))) => v1 + v2 as f64,
         _ => 0.0
     };
     //println!("{}",total);
     stack.push( ValueType::Real(total));
 }
 
-fn fornext(n: u16, 
-        stack: &mut Vec<ValueType>, 
-        fields: &mut HashMap<i64, ( u32, ValueType, bool )>,
-        jump: u32) -> u32 {
-    let f = stack.pop();
-    let min = stack.pop();
-    let max = stack.pop();
-    let inc = stack.pop();
-    let jump = match f {
-        Some(ValueType::Index(ref idx)) => {
-            match fields.get(idx) {
-                Some((idx, value, false)) => {
-                    let min_value = match value { &ValueType::Integer(v) => v, _ => 0 };
-                    fields.insert(*idx, (*idx, ValueType::Index(min_value), true));
-                    0 },
+fn ge(n_args: u16, stack: &mut Vec<ValueType>) {
+    let p1 = stack.pop();
+    let p2 = stack.pop();
 
-                Some((idx, value, true)) => {
-                    let f_value = match value { 
-                        &ValueType::Integer(v) => v,
-                        _ => 0
-                    };
-
-                    match (max,inc) {   
-                        (Some(ValueType::Integer(max_value)), Some(ValueType::Integer(inc_value))) => {
-                            if f_value >= max_value {
-                                fields.insert(*idx, (*idx, 0, false));
-                                jump                        
-                            } else {
-                                let total = f_value + inc_value;
-                                fields.insert(*idx, (*idx, ValueType::Integer(total), true));
-                                0
-                            }},
-                        _ => 0
-                    }
-                },
-                _ => 0
-            } 
-        }
+    let total = match (p1,p2) {
+        (Some(ValueType::Real(v1)), Some(ValueType::Real(v2))) => v2 >= v1,
+        (Some(ValueType::Integer(v1)), Some(ValueType::Real(v2))) => v2 >=  v1 as f64,
+        (Some(ValueType::Integer(v1)), Some(ValueType::Integer(v2))) => v2 as f64 >= v1 as f64,
+        (Some(ValueType::Real(v1)), Some(ValueType::Integer(v2))) => v2 as f64 >= v1,
+        _ => true
     };
-    0
-}   
+    //println!("{}",total);
+    stack.push( ValueType::Boolean(total));
+}
+
+fn print(n_args: u16, stack: &mut Vec<ValueType>) {
+    let p1 = stack.pop().unwrap();
+
+    match p1 {
+        ValueType::Real(v1) => println!("{}",v1),
+        ValueType::Boolean(v1) => println!("{}",v1),
+        ValueType::Integer(v1) => println!("{}",v1),
+        ValueType::Field(v1) => println!("{}",v1),
+    };
+}
 
 struct Program {
     code : Vec<TokenType>,
     stack : Vec<ValueType>,
-    fields : HashMap<u16,( u32, ValueType, bool )>
+    local_idx : i32,
+    fields : HashMap<i32,ValueType>
 }
 
+fn get(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
+    let f = stack.pop().unwrap();
+    let mut idx = match f { ValueType::Field(x) => x, _ => 0 };
+    if idx < 0 {
+        idx = idx + 0;
+    }
+    let value = fields.get(&idx).unwrap();
+    stack.push(*value);
+    //println!("{}",value);
+    0
+}
+
+fn set(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
+    let v = stack.pop().unwrap();
+    let f = stack.pop().unwrap();
+    let idx = match f { ValueType::Field(idx) => idx, _ => 0 };
+    fields.insert(idx, v );
+    //println!("{}",v);
+    0
+}
+
+fn jump(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
+    let v = stack.pop().unwrap();
+    let is_jump = match v { ValueType::Boolean(b) => b, _ => false };
+    //println!("{}",jump);
+
+    if is_jump == true {
+        jump
+    } else {
+        0
+    }
+}    
+
+fn next(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, n_agrs: u16, jump: usize) -> usize {
+    //println!("{}",jump);
+    jump
+}   
+
+fn push(fields: &mut HashMap<i32,ValueType>, stack: &mut Vec<ValueType>, value: ValueType) {
+    //println!("{}",value);
+    stack.push(value);
+}   
+
 impl Program {
-    fn exe(&mut self) {
+    pub fn exe(&mut self) {
         let now = Instant::now();
-        for x in 1..100000 {
-            for t in &self.code {
+        let mut i = 0usize;
+        while i < self.code.len() {
+            let t = &self.code[i];
+            let next_i = i + 1;
+            let mut jump_i = next_i;
+            {
                 match t {
-                    &TokenType::Function(n, ptr) => (ptr)(n, &mut self.stack),
-                    &TokenType::Command(n, ptr, jump) => (ptr)(n, &mut self.stack),
-                    &TokenType::Field(id_name, value, false) => self.stack.push(value),
-                    &TokenType::Value(value) => self.stack.push(value)
-                };
+                    &TokenType::Function(n_agrs, ptr) => (ptr)(n_agrs, &mut self.stack),
+                    &TokenType::Command(n_agrs, ptr, jump) => { jump_i = (ptr)(&mut self.fields, &mut self.stack, n_agrs, jump); }
+                    &TokenType::Value(value) => push(&mut self.fields, &mut self.stack, value)
+                }
             }
-            self.stack.clear();
+            if jump_i != 0 {
+                i = jump_i;
+            } else {
+                i = next_i;
+            }
         }
         println!("Elapsed: {} ms", (now.elapsed().subsec_nanos() as f64 / 1000000.0) as f64);    
     }
@@ -101,25 +139,80 @@ fn main() {
     let mut p = Program {
         code : Vec::with_capacity(200),
         stack : Vec::with_capacity(200),
-        fields : HashMap::new()
+        fields : HashMap::new(),
+        local_idx : 0
     };
 
-    p.code.push(TokenType::Value(ValueType::Inteter(1)));
-    p.code.push(TokenType::Command(1, set, 1));
+    // j = 1
+    // 0
+    p.code.push(TokenType::Value(ValueType::Field(1)));   //  1 == j            
+    // 1
+    p.code.push(TokenType::Value(ValueType::Integer(1)));
+    // 2
+    p.code.push(TokenType::Command(2, set, 0)); 
 
-    p.code.push(TokenType::Field(ValueType::Inteter(1));
-    p.code.push(TokenType::Value(ValueType::Inteter(1)));
-    p.code.push(TokenType::Value(ValueType::Inteter(1000000)));
-    p.code.push(TokenType::Command(3, for, 9));
+    // for(i,1,100000,1)
+    // i = 1
+    // 3
+    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    // 4
+    p.code.push(TokenType::Value(ValueType::Integer(1)));    
+    // 5
+    p.code.push(TokenType::Command(2, set, 0));             
 
-    p.code.push(TokenType::Value(ValueType::Real(12.12)));
-    p.code.push(TokenType::Value(ValueType::Real(12.12)));
-    p.code.push(TokenType::Function(2, add));
+    // if i >= 1000000 jump after next
+    // 6
+    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    // 7
+    p.code.push(TokenType::Command(1, get, 0));             
+    // 8
+    p.code.push(TokenType::Value(ValueType::Integer(1000000)));
+    // 9
+    p.code.push(TokenType::Function(2, ge));               
+    // 10
+    p.code.push(TokenType::Command(1, jump, 25));              
 
-    p.code.push(TokenType::Command(1, set, 0);
-    p.code.push(TokenType::Function(1, set));
+    // i = i + 1
+    // 11
+    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    // 12
+    p.code.push(TokenType::Value(ValueType::Field(2)));  // 2 = i              
+    // 13
+    p.code.push(TokenType::Command(1, get, 0));               
+    // 14
+    p.code.push(TokenType::Value(ValueType::Integer(1)));     
+    // 15
+    p.code.push(TokenType::Function(2, add));                 
+    // 16
+    p.code.push(TokenType::Command(2, set, 0));               
 
-    p.code.push(TokenType::Command(2, next, 4));
+    // j = j + i
+    // 17
+    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
+    // 18
+    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j         
+    // 19
+    p.code.push(TokenType::Command(1, get, 0));               
+    // 20
+    p.code.push(TokenType::Value(ValueType::Field(2)));  //  2 == i         
+    // 21
+    p.code.push(TokenType::Command(1, get, 0));               
+    // 22
+    p.code.push(TokenType::Function(2, add));              
+    // 23
+    p.code.push(TokenType::Command(1, set, 0));             
+
+    // next
+    // 24
+    p.code.push(TokenType::Command(0, next, 6));           
+
+    // print(j)
+    // 25
+    p.code.push(TokenType::Value(ValueType::Field(1)));  //  1 == j     
+    // 26
+    p.code.push(TokenType::Command(1, get, 0));             
+    // 27
+    p.code.push(TokenType::Function(1, print));            
 
     p.exe();
     println!("end");
