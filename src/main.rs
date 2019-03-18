@@ -1,66 +1,78 @@
 use std::time::{Instant};
 
-type FunctionPtr = fn(u16, &mut Vec<f64>);
 type CommandPtr = fn(&mut Context, u16, usize) -> usize;
 
 enum TokenType {
     Command(u16, CommandPtr, usize),
-    Function(u16 , FunctionPtr),
     Value(f64),
     FieldGet(f64)
 }
 
-fn add(n: u16, stack: &mut Vec<f64>) {
-    assert_eq!(n,2);
-    let p1 = stack.pop().unwrap();
-    let p2 = stack.pop().unwrap();
-    stack.push(p1+p2);
+macro_rules! push {
+    ($c:expr, $v:expr) => {{
+        $c.top = $c.top + 1;
+        $c.stack[$c.top] = $v;
+    }};
 }
 
-fn print(n: u16, stack: &mut Vec<f64>) {
+macro_rules! pop {
+    ($c:expr) =>  { { let top = $c.top; $c.top = $c.top - 1; $c.stack[top] } }
+}
+
+/*
+macro_rules! peek {
+    ($c:expr, $i:expr) =>  { { $c.stack[top - $i] } }
+}
+
+macro_rules! dectop {
+    ($c:expr, $i:expr) =>  { { $c.top = $c.top - $i } }
+}
+*/
+
+fn add(context :&mut Context, n: u16, jump: usize) -> usize {
+    assert_eq!(n,2);
+    let p1 = pop!(context);
+    let p2 = pop!(context);
+    push!(context, p1+p2);
+    jump
+}
+
+fn print(context :&mut Context, n: u16, jump: usize) -> usize {
     assert_eq!(n,1);
-    println!("{}",stack.pop().unwrap());
+    println!("{}",pop!(context));
+    jump
 }
 
 fn get(context :&mut Context, n: u16, jump: usize) -> usize {
     assert_eq!(n,1);
-    let stack = &mut context.stack;
-    let fields = &mut context.fields;
-
-    let mut idx = stack.pop().unwrap() as i32;
+    let mut idx = pop!(context) as i32;
     if idx < 0 {
         idx = idx + context.local_idx;
     }
-    let value = fields[idx as usize];
-    stack.push(value);
-    //println!("get");
+    push!(context, context.fields[idx as usize]);
     jump
 }
 
 fn set(context :&mut Context, n: u16, jump: usize) -> usize {
     assert_eq!(n,2);
-    let stack = &mut context.stack;
-    let fields = &mut context.fields;
 
-    let v = stack.pop().unwrap();
-    let mut idx = stack.pop().unwrap() as i32;
+    let v = pop!(context);
+    let mut idx = pop!(context) as i32;
     if idx < 0 {
         idx = idx + context.local_idx;
     }
-    fields[idx as usize] = v;
-    //println!("set");
+    context.fields[idx as usize] = v;
     jump
 }
 
 fn cfor(context :&mut Context, n: u16, jump: usize) -> usize {
     assert_eq!(n,4);
-    let stack = &mut context.stack;
     let fields = &mut context.fields;
 
-    let inc = stack.pop().unwrap();
-    let max = stack.pop().unwrap();
-    let min = stack.pop().unwrap();
-    let mut idx = stack.pop().unwrap() as i32;
+    let inc = pop!(context);
+    let max = pop!(context);
+    let min = pop!(context);;
+    let mut idx = pop!(context) as i32;
     if idx < 0 {
         idx = idx + context.local_idx;
     }
@@ -89,7 +101,7 @@ fn push(context : &mut Context, value: f64) {
     if idx < 0 {
         idx = idx + context.local_idx;
     }
-    context.stack.push(context.fields[idx as usize]); 
+    push!(context, context.fields[idx as usize]); 
 }
 
 impl Program {
@@ -104,8 +116,7 @@ impl Program {
             exit_loop = true;
             for t in &self.code[i..len] {
                 match t {
-                    &TokenType::Value(value) => self.context.stack.push(value),
-                    &TokenType::Function(n, ptr) => (ptr)(n, &mut self.context.stack),
+                    &TokenType::Value(value) => push!(self.context, value),
                     &TokenType::Command(n, ptr, jump) => { jump_i = (ptr)(&mut self.context, n, jump); }
                     &TokenType::FieldGet(value) => { push(&mut self.context, value) }
                 }
@@ -124,8 +135,9 @@ impl Program {
 
 struct Context {
     local_idx : i32,
-    stack : Vec<f64>,
+    stack :  Box<[f64;200]>,
     fields : Box<[f64;200]>,
+    top : usize
 }
 
 struct Program {
@@ -138,9 +150,10 @@ fn main() {
     let mut p = Program {
         code : Vec::with_capacity(200),
         context : Context {
-            stack : Vec::with_capacity(200),
+            stack : Box::new([0.0;200]),
             fields : Box::new([0.0;200]),
-            local_idx : 0
+            local_idx : 0,
+            top : 0
         }
     };
 
@@ -180,7 +193,7 @@ fn main() {
     // 13
     p.code.push(TokenType::FieldGet(2.0));  //  2 == i         
     // 14
-    p.code.push(TokenType::Function(2, add));              
+    p.code.push(TokenType::Command(2, add, 0));              
     // 15
     p.code.push(TokenType::Command(2, set, 0));             
 
@@ -194,7 +207,7 @@ fn main() {
     // 18
     p.code.push(TokenType::Command(1, get, 0));             
     // 19
-    p.code.push(TokenType::Function(1, print));            
+    p.code.push(TokenType::Command(1, print, 0));            
 
     p.exe();
     println!("end");
