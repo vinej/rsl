@@ -10,13 +10,13 @@ enum TokenType {
 
 macro_rules! push {
     ($c:expr, $v:expr) => {{
-        $c.top = $c.top + 1;
+        $c.top += 1;
         $c.stack[$c.top] = $v;
     }};
 }
 
 macro_rules! pop {
-    ($c:expr) =>  { { let top = $c.top; $c.top = $c.top - 1; $c.stack[top] } }
+    ($c:expr) =>  { { let top = $c.top; $c.top -= 1; $c.stack[top] } }
 }
 
 /*
@@ -29,8 +29,8 @@ macro_rules! dectop {
 }
 */
 
-fn add(context :&mut Context, n: u16) {
-    assert_eq!(n,2);
+fn add(context :&mut Context, _: u16) {
+    //assert_eq!(n,2);
     let p1 = pop!(context);
     let p2 = pop!(context);
     push!(context, p1+p2);
@@ -61,7 +61,7 @@ fn set(context :&mut Context, n: u16)  {
     context.fields[idx as usize] = v;
 }
 
-fn cfor(context :&mut Context, n: u16)  {
+fn ifor(context :&mut Context, n: u16)  {
     assert_eq!(n,4);
     let fields = &mut context.fields;
 
@@ -71,23 +71,30 @@ fn cfor(context :&mut Context, n: u16)  {
     let mut idx = pop!(context) as i32;
     if idx < 0 {
         idx = idx + context.local_idx;
-    }
-    let fv = fields[idx as usize];
-    
-    if fv == -1.0 {
-        fields[idx as usize] = min;
-        context.jump = 0;
-    } else {
-        if fv < max {
-            fields[idx as usize] = fv + inc;
-            context.jump = 0;
-        }
-    }
+    }    
+    fields[idx as usize] = min;
+    context.jump = 0;
+    context.forstk.push( (idx,max,inc) );
 }
 
-fn next(_ : &mut Context, n: u16)  {
-    assert_eq!(n,0);
-}   
+fn nfor(context :&mut Context, _: u16)  {
+    {
+        let idxmaxinc = context.forstk.first().unwrap();
+        let fields = &mut context.fields;
+        let fv = fields[idxmaxinc.0 as usize];
+        
+        if fv < idxmaxinc.1 {
+            fields[idxmaxinc.0 as usize] = fv + idxmaxinc.2;
+            context.jump = 0;
+            return;
+        }
+    }
+    context.forstk.pop();        
+}
+
+fn next(_ : &mut Context, _: u16)  { }   
+
+fn jump(_ : &mut Context, _: u16)  { }   
 
 fn push(context : &mut Context, value: f64) {
     let mut idx = value as i32;
@@ -128,6 +135,7 @@ struct Context {
     local_idx : i32,
     stack :  Box<[f64;200]>,
     fields : Box<[f64;200]>,
+    forstk : Vec<(i32,f64,f64)>,
     top : usize,
     jump : usize
 }
@@ -144,6 +152,7 @@ fn main() {
         context : Context {
             stack : Box::new([0.0;200]),
             fields : Box::new([0.0;200]),
+            forstk : Vec::with_capacity(20),
             local_idx : 0,
             top : 0,
             jump : 0
@@ -176,30 +185,33 @@ fn main() {
     // 9
     p.code.push(TokenType::Value(1.0));    
     // 10
-    p.code.push(TokenType::Command(4, cfor, 17));             
-
-    // j = j + i
-    // 11
-    p.code.push(TokenType::Value(1.0));  //  1 == j         
+    p.code.push(TokenType::Command(4, ifor, 17));
+    // 11             
+    p.code.push(TokenType::Command(0, jump, 13));             
     // 12
-    p.code.push(TokenType::Field(1.0));  //  1 == j         
+    p.code.push(TokenType::Command(0, nfor, 19));             
+    // j = j + i
     // 13
-    p.code.push(TokenType::Field(2.0));  //  2 == i         
+    p.code.push(TokenType::Value(1.0));  //  1 == j         
     // 14
-    p.code.push(TokenType::Command(2, add, 0));              
+    p.code.push(TokenType::Field(1.0));  //  1 == j         
     // 15
+    p.code.push(TokenType::Field(2.0));  //  2 == i         
+    // 16
+    p.code.push(TokenType::Command(2, add, 0));              
+    // 17
     p.code.push(TokenType::Command(2, set, 0));             
 
     // next
-    // 16
-    p.code.push(TokenType::Command(0, next, 6));           
+    // 18
+    p.code.push(TokenType::Command(0, next, 12));           
 
     // print(j)
-    // 17
-    p.code.push(TokenType::Value(1.0));  //  1 == j     
-    // 18
-    p.code.push(TokenType::Command(1, get, 0));             
     // 19
+    p.code.push(TokenType::Value(1.0));  //  1 == j     
+    // 20
+    p.code.push(TokenType::Command(1, get, 0));             
+    // 21
     p.code.push(TokenType::Command(1, print, 0));            
 
     p.exe();
