@@ -1,11 +1,11 @@
 use std::time::{Instant};
 
-type CommandPtr = fn(&mut Context, u16, usize) -> usize;
+type CommandPtr = fn(&mut Context, u16) ;
 
 enum TokenType {
     Command(u16, CommandPtr, usize),
     Value(f64),
-    FieldGet(f64)
+    Field(f64)
 }
 
 macro_rules! push {
@@ -29,31 +29,28 @@ macro_rules! dectop {
 }
 */
 
-fn add(context :&mut Context, n: u16, jump: usize) -> usize {
+fn add(context :&mut Context, n: u16) {
     assert_eq!(n,2);
     let p1 = pop!(context);
     let p2 = pop!(context);
     push!(context, p1+p2);
-    jump
 }
 
-fn print(context :&mut Context, n: u16, jump: usize) -> usize {
+fn print(context :&mut Context, n: u16)  {
     assert_eq!(n,1);
     println!("{}",pop!(context));
-    jump
 }
 
-fn get(context :&mut Context, n: u16, jump: usize) -> usize {
+fn get(context :&mut Context, n: u16)  {
     assert_eq!(n,1);
     let mut idx = pop!(context) as i32;
     if idx < 0 {
         idx = idx + context.local_idx;
     }
     push!(context, context.fields[idx as usize]);
-    jump
 }
 
-fn set(context :&mut Context, n: u16, jump: usize) -> usize {
+fn set(context :&mut Context, n: u16)  {
     assert_eq!(n,2);
 
     let v = pop!(context);
@@ -62,10 +59,9 @@ fn set(context :&mut Context, n: u16, jump: usize) -> usize {
         idx = idx + context.local_idx;
     }
     context.fields[idx as usize] = v;
-    jump
 }
 
-fn cfor(context :&mut Context, n: u16, jump: usize) -> usize {
+fn cfor(context :&mut Context, n: u16)  {
     assert_eq!(n,4);
     let fields = &mut context.fields;
 
@@ -80,20 +76,17 @@ fn cfor(context :&mut Context, n: u16, jump: usize) -> usize {
     
     if fv == -1.0 {
         fields[idx as usize] = min;
-        0
+        context.jump = 0;
     } else {
-        if fv >= max {
-            jump
-        } else {
+        if fv < max {
             fields[idx as usize] = fv + inc;
-            0
+            context.jump = 0;
         }
     }
 }
 
-fn next(_ : &mut Context, n: u16, jump: usize) -> usize {
+fn next(_ : &mut Context, n: u16)  {
     assert_eq!(n,0);
-    jump
 }   
 
 fn push(context : &mut Context, value: f64) {
@@ -105,25 +98,23 @@ fn push(context : &mut Context, value: f64) {
 }
 
 impl Program {
-
     pub fn exe(&mut self) {
         let now = Instant::now();
         let mut i = 0usize;
         let len = self.code.len();
-        let mut jump_i = 0;
         let mut exit_loop = false;
         while exit_loop == false {
             exit_loop = true;
             for t in &self.code[i..len] {
                 match t {
                     &TokenType::Value(value) => push!(self.context, value),
-                    &TokenType::Command(n, ptr, jump) => { jump_i = (ptr)(&mut self.context, n, jump); }
-                    &TokenType::FieldGet(value) => { push(&mut self.context, value) }
+                    &TokenType::Command(n, ptr, jump) => { self.context.jump = jump; (ptr)(&mut self.context, n); }
+                    &TokenType::Field(value) => { push(&mut self.context, value) }
                 }
-                if jump_i != 0 {
+                if self.context.jump != 0 {
                     //println!("jump {}",jump_i);
-                    i = jump_i;
-                    jump_i = 0;
+                    i = self.context.jump;
+                    self.context.jump = 0;
                     exit_loop = false;
                     break;
                 }
@@ -137,7 +128,8 @@ struct Context {
     local_idx : i32,
     stack :  Box<[f64;200]>,
     fields : Box<[f64;200]>,
-    top : usize
+    top : usize,
+    jump : usize
 }
 
 struct Program {
@@ -153,7 +145,8 @@ fn main() {
             stack : Box::new([0.0;200]),
             fields : Box::new([0.0;200]),
             local_idx : 0,
-            top : 0
+            top : 0,
+            jump : 0
         }
     };
 
@@ -189,9 +182,9 @@ fn main() {
     // 11
     p.code.push(TokenType::Value(1.0));  //  1 == j         
     // 12
-    p.code.push(TokenType::FieldGet(1.0));  //  1 == j         
+    p.code.push(TokenType::Field(1.0));  //  1 == j         
     // 13
-    p.code.push(TokenType::FieldGet(2.0));  //  2 == i         
+    p.code.push(TokenType::Field(2.0));  //  2 == i         
     // 14
     p.code.push(TokenType::Command(2, add, 0));              
     // 15
